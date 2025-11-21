@@ -17,8 +17,8 @@ try {
   implementationType = 'native';
 
   // Verify it's actually working
-  if (typeof implementation.VectorDB !== 'function') {
-    throw new Error('Native module loaded but VectorDB not found');
+  if (typeof implementation.VectorDb !== 'function') {
+    throw new Error('Native module loaded but VectorDb not found');
   }
 } catch (e: any) {
   // Fallback to WASM
@@ -71,8 +71,8 @@ export function getVersion(): { version: string; implementation: string } {
   };
 }
 
-// Export the VectorDB class
-export const VectorDB = implementation.VectorDB;
+// Export the VectorDB class (note: native exports VectorDb, we re-export as VectorDB for consistency)
+export const VectorDB = implementation.VectorDb;
 
 // Export everything from the implementation
 export default implementation;
