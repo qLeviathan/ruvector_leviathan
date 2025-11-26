@@ -7,27 +7,29 @@
 [![Build](https://img.shields.io/github/actions/workflow/status/ruvnet/ruvector/ci.yml?branch=main)](https://github.com/ruvnet/ruvector/actions)
 [![Docs](https://img.shields.io/badge/docs-latest-brightgreen.svg)](./docs/)
 
-**A vector database that learns.** Store embeddings, query with Cypher, and let the index improve itself through Graph Neural Networks.
+**A distributed vector database that learns.** Store embeddings, query with Cypher, scale horizontally with Raft consensus, and let the index improve itself through Graph Neural Networks.
 
 ```bash
 npx ruvector
 ```
 
-> **All-in-One Package**: The core `ruvector` package includes everything — vector search, graph queries, GNN layers, tensor compression, and WASM support. No additional packages needed.
+> **All-in-One Package**: The core `ruvector` package includes everything — vector search, graph queries, GNN layers, distributed clustering, AI routing, and WASM support. No additional packages needed.
 
 ## What Problem Does RuVector Solve?
 
-Traditional vector databases just store and search. When you ask "find similar items," they return results but never get smarter.
+Traditional vector databases just store and search. When you ask "find similar items," they return results but never get smarter. They don't scale horizontally. They can't route AI requests intelligently.
 
 **RuVector is different:**
 
 1. **Store vectors** like any vector DB (embeddings from OpenAI, Cohere, etc.)
 2. **Query with Cypher** like Neo4j (`MATCH (a)-[:SIMILAR]->(b) RETURN b`)
 3. **The index learns** — GNN layers make search results improve over time
-4. **Compress automatically** — 2-32x memory reduction with adaptive tiered compression
-5. **Run anywhere** — Node.js, browser (WASM), or native Rust
+4. **Scale horizontally** — Raft consensus, multi-master replication, auto-sharding
+5. **Route AI requests** — Semantic routing and FastGRNN neural inference for LLM optimization
+6. **Compress automatically** — 2-32x memory reduction with adaptive tiered compression
+7. **Run anywhere** — Node.js, browser (WASM), HTTP server, or native Rust
 
-Think of it as: **Pinecone + Neo4j + PyTorch** in one Rust package.
+Think of it as: **Pinecone + Neo4j + PyTorch + etcd** in one Rust package.
 
 ## Quick Start
 
@@ -90,16 +92,46 @@ let enhanced = layer.forward(&query, &neighbors, &weights);
 
 ## Features
 
+### Core Capabilities
+
 | Feature | What It Does | Why It Matters |
 |---------|--------------|----------------|
-| **Vector Search** | HNSW index, <0.5ms latency | Fast enough for real-time apps |
+| **Vector Search** | HNSW index, <0.5ms latency, SIMD acceleration | Fast enough for real-time apps |
 | **Cypher Queries** | `MATCH`, `WHERE`, `CREATE`, `RETURN` | Familiar Neo4j syntax |
 | **GNN Layers** | Neural network on index topology | Search improves with usage |
 | **Hyperedges** | Connect 3+ nodes at once | Model complex relationships |
+| **Metadata Filtering** | Filter vectors by properties | Combine semantic + structured search |
+| **Collections** | Namespace isolation, multi-tenancy | Organize vectors by project/user |
+
+### Distributed Systems
+
+| Feature | What It Does | Why It Matters |
+|---------|--------------|----------------|
+| **Raft Consensus** | Leader election, log replication | Strong consistency for metadata |
+| **Auto-Sharding** | Consistent hashing, shard migration | Scale to billions of vectors |
+| **Multi-Master Replication** | Write to any node, conflict resolution | High availability, no SPOF |
+| **Snapshots** | Point-in-time backups, incremental | Disaster recovery |
+| **Cluster Metrics** | Prometheus-compatible monitoring | Observability at scale |
+
+### AI & ML
+
+| Feature | What It Does | Why It Matters |
+|---------|--------------|----------------|
 | **Tensor Compression** | f32→f16→PQ8→PQ4→Binary | 2-32x memory reduction |
 | **Differentiable Search** | Soft attention k-NN | End-to-end trainable |
-| **Tiny Dancer** | FastGRNN neural routing | Optimize LLM inference costs |
+| **Semantic Router** | Route queries to optimal endpoints | Multi-model AI orchestration |
+| **Tiny Dancer** | FastGRNN neural inference | Optimize LLM inference costs |
+| **Adaptive Routing** | Learn optimal routing strategies | Minimize latency, maximize accuracy |
+
+### Deployment
+
+| Feature | What It Does | Why It Matters |
+|---------|--------------|----------------|
+| **HTTP/gRPC Server** | REST API, streaming support | Easy integration |
 | **WASM/Browser** | Full client-side support | Run AI search offline |
+| **Node.js Bindings** | Native napi-rs bindings | No serialization overhead |
+| **FFI Bindings** | C-compatible interface | Use from Python, Go, etc. |
+| **CLI Tools** | Benchmarking, testing, management | DevOps-friendly |
 
 ## Benchmarks
 
@@ -123,6 +155,8 @@ Real benchmark results on standard hardware:
 | **Hyperedges** | ✅ | ❌ | ❌ | ❌ | ❌ |
 | **Self-Learning (GNN)** | ✅ | ❌ | ❌ | ❌ | ❌ |
 | **AI Agent Routing** | ✅ Tiny Dancer | ❌ | ❌ | ❌ | ❌ |
+| **Raft Consensus** | ✅ | ❌ | ✅ | ❌ | ❌ |
+| **Multi-Master Replication** | ✅ | ❌ | ❌ | ✅ | ❌ |
 | **Auto-Compression** | ✅ 2-32x | ❌ | ❌ | ✅ | ❌ |
 | **Browser/WASM** | ✅ | ❌ | ❌ | ❌ | ❌ |
 | **Differentiable** | ✅ | ❌ | ❌ | ❌ | ❌ |
