@@ -22,7 +22,7 @@
 //!     let spec = junior_ai_engineer_spec();
 //!
 //!     // Build and execute
-//!     let executor = AgentExecutor::new(spec);
+//!     let mut executor = AgentExecutor::new(spec);
 //!     executor.execute_task("Implement a RAG system using LangChain").await?;
 //!
 //!     Ok(())

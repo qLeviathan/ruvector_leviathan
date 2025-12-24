@@ -17,7 +17,7 @@
 //! ```rust
 //! use leviathan_compliance::{ComplianceValidator, ComplianceFramework};
 //!
-//! let validator = ComplianceValidator::new();
+//! let mut validator = ComplianceValidator::new();
 //! let report = validator.validate_framework(ComplianceFramework::BCBS239);
 //! ```
 
