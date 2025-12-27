@@ -39,6 +39,7 @@ pub mod embeddings;
 pub mod error;
 pub mod index;
 pub mod quantization;
+pub mod nymph;
 
 // Storage backends - conditional compilation based on features
 #[cfg(feature = "storage")]
@@ -93,6 +94,9 @@ const _: () = {
 };
 
 pub use error::{Result, RuvectorError};
+pub use nymph::{
+    AdultEncoded, LarvalEncoded, MetamorphicStage, NymphEncoded, NymphVector, StageMetadata,
+};
 pub use types::{DistanceMetric, SearchQuery, SearchResult, VectorEntry, VectorId};
 pub use vector_db::VectorDB;
 

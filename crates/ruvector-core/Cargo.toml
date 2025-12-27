@@ -43,6 +43,9 @@ once_cell = { workspace = true }
 chrono = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
 
+# Async runtime (optional, for nymph daemon)
+tokio = { workspace = true, optional = true }
+
 # HTTP client for API embeddings (not available in WASM)
 reqwest = { version = "0.11", default-features = false, features = ["blocking", "json", "rustls-tls"], optional = true }
 
@@ -52,6 +55,7 @@ proptest = { workspace = true }
 mockall = { workspace = true }
 tempfile = "3.13"
 tracing-subscriber = { workspace = true }
+tokio = { workspace = true, features = ["test-util"] }
 
 [[bench]]
 name = "distance_metrics"
@@ -87,6 +91,7 @@ memory-only = []  # Pure in-memory storage for WASM
 uuid-support = []  # Deprecated: uuid is now always included
 real-embeddings = []  # Feature flag for embedding provider API (use ApiEmbedding for production)
 api-embeddings = ["reqwest"]  # API-based embeddings (not available in WASM)
+nymph-async = ["tokio"]  # Async daemon for nymph encoding (requires tokio)
 
 [lib]
 crate-type = ["rlib"]

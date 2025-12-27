@@ -6463,6 +6463,7 @@ dependencies = [
  "simsimd",
  "tempfile",
  "thiserror 2.0.17",
+ "tokio",
  "tracing",
  "tracing-subscriber",
  "uuid",
