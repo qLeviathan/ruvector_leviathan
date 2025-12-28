@@ -1,0 +1,40 @@
+# =============================================================================
+# RUVECTOR SWARM - MEMORY BACKUP SERVICE
+# Persistent backup of Redis data and shared memory
+# =============================================================================
+FROM alpine:3.19
+
+# Install backup tools
+RUN apk add --no-cache \
+    bash \
+    redis \
+    gzip \
+    curl \
+    aws-cli \
+    rclone \
+    tini \
+    dcron
+
+WORKDIR /app
+
+# Create backup directories
+RUN mkdir -p /backups/hourly /backups/daily /backups/weekly /data/redis /app/memory
+
+# Copy backup scripts
+COPY scripts/ ./scripts/
+RUN chmod +x ./scripts/*.sh
+
+# Create cron jobs
+COPY crontab /etc/crontabs/root
+
+# Environment
+ENV BACKUP_INTERVAL=300
+ENV BACKUP_RETENTION_DAYS=7
+ENV BACKUP_COMPRESSION=gzip
+ENV REDIS_HOST=memory-store
+ENV REDIS_PORT=6379
+
+EXPOSE 8080
+
+ENTRYPOINT ["/sbin/tini", "--"]
+CMD ["./scripts/entrypoint.sh"]

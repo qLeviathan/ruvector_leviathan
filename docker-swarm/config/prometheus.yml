@@ -1,0 +1,76 @@
+# =============================================================================
+# PROMETHEUS CONFIGURATION - RuVector Swarm Monitoring
+# =============================================================================
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: 'ruvector-swarm'
+
+# Alerting configuration
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: []
+
+# Rule files
+rule_files:
+  - /etc/prometheus/rules/*.yml
+
+# Scrape configurations
+scrape_configs:
+  # Prometheus self-monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # Orchestrator metrics
+  - job_name: 'orchestrator'
+    static_configs:
+      - targets: ['orchestrator:9001']
+    metrics_path: '/metrics'
+
+  # Redis metrics (via redis_exporter if deployed)
+  - job_name: 'redis'
+    static_configs:
+      - targets: ['memory-store:6379']
+    metrics_path: '/metrics'
+
+  # Docker Swarm service discovery
+  - job_name: 'swarm-workers'
+    dockerswarm_sd_configs:
+      - host: unix:///var/run/docker.sock
+        role: tasks
+        filters:
+          - name: label
+            values: ['swarm.autoscale=true']
+    relabel_configs:
+      - source_labels: [__meta_dockerswarm_task_name]
+        target_label: task_name
+      - source_labels: [__meta_dockerswarm_service_name]
+        target_label: service_name
+      - source_labels: [__meta_dockerswarm_node_hostname]
+        target_label: node
+      - source_labels: [__address__]
+        target_label: __address__
+        regex: '(.+):.*'
+        replacement: '$1:8080'
+
+  # Memory backup service
+  - job_name: 'memory-backup'
+    static_configs:
+      - targets: ['memory-backup:8080']
+
+  # Node metrics (if node_exporter is deployed)
+  - job_name: 'nodes'
+    dockerswarm_sd_configs:
+      - host: unix:///var/run/docker.sock
+        role: nodes
+    relabel_configs:
+      - source_labels: [__meta_dockerswarm_node_hostname]
+        target_label: node
+      - source_labels: [__address__]
+        target_label: __address__
+        regex: '(.+):.*'
+        replacement: '$1:9100'

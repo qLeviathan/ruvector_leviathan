@@ -1,0 +1,16 @@
+{
+  "name": "ruvector-swarm-orchestrator",
+  "version": "1.0.0",
+  "description": "Central orchestrator for RuVector Docker Swarm",
+  "main": "src/orchestrator.js",
+  "scripts": {
+    "start": "node src/orchestrator.js",
+    "dev": "node --watch src/orchestrator.js"
+  },
+  "dependencies": {
+    "ioredis": "^5.3.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

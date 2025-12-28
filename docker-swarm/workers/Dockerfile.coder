@@ -1,0 +1,63 @@
+# =============================================================================
+# RUVECTOR SWARM WORKER - CODER
+# Implementation, code writing, editing, and refactoring
+# =============================================================================
+FROM node:20-alpine AS builder
+
+WORKDIR /app
+
+RUN apk add --no-cache python3 make g++ curl git
+
+COPY package*.json ./
+RUN npm ci --only=production
+
+COPY src/ ./src/
+COPY common/ ./common/
+
+# =============================================================================
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Runtime dependencies for coding
+RUN apk add --no-cache \
+    curl \
+    git \
+    ripgrep \
+    fd \
+    jq \
+    redis \
+    tini \
+    bash \
+    # Language support
+    python3 \
+    py3-pip \
+    go \
+    rust \
+    cargo
+
+# Create worker user
+RUN addgroup -g 1001 -S worker && \
+    adduser -u 1001 -S worker -G worker
+
+# Create directories
+RUN mkdir -p /app/memory /app/logs /app/workspace && \
+    chown -R worker:worker /app
+
+COPY --from=builder --chown=worker:worker /app/node_modules ./node_modules
+COPY --from=builder --chown=worker:worker /app/src ./src
+COPY --from=builder --chown=worker:worker /app/common ./common
+
+# Worker-specific configuration
+ENV WORKER_TYPE=coder
+ENV WORKER_CAPABILITIES="write,edit,create,refactor,implement"
+ENV SPAWN_PRIORITY=high
+ENV IDLE_TIMEOUT=180
+ENV MAX_CONCURRENT_TASKS=2
+
+USER worker
+
+EXPOSE 8080
+
+ENTRYPOINT ["/sbin/tini", "--"]
+CMD ["node", "src/worker.js"]

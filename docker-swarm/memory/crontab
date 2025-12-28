@@ -1,0 +1,12 @@
+# =============================================================================
+# BACKUP CRON JOBS
+# =============================================================================
+
+# Hourly cleanup check (in addition to backup loop)
+0 * * * * /app/scripts/cleanup.sh >> /var/log/backup.log 2>&1
+
+# Daily integrity check
+0 3 * * * /app/scripts/verify.sh >> /var/log/backup.log 2>&1
+
+# Weekly report
+0 4 * * 0 /app/scripts/report.sh >> /var/log/backup.log 2>&1

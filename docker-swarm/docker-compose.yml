@@ -1,0 +1,513 @@
+version: "3.9"
+
+# =============================================================================
+# RUVECTOR SWARM ORCHESTRATION - Docker Swarm Deployment
+# =============================================================================
+# 5 Worker Types with 1:2 Spawn Ratio
+# Persistent Memory with Backup
+# Isolated Network Segments
+# =============================================================================
+
+x-worker-common: &worker-common
+  restart: unless-stopped
+  networks:
+    - agent-mesh
+  volumes:
+    - shared-memory:/app/memory:rw
+    - worker-logs:/app/logs:rw
+  environment:
+    - MEMORY_BACKEND=redis
+    - MEMORY_REDIS_URL=redis://memory-store:6379
+    - BACKUP_ENABLED=true
+    - BACKUP_INTERVAL=300
+    - LOG_LEVEL=info
+  healthcheck:
+    test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+    interval: 30s
+    timeout: 10s
+    retries: 3
+    start_period: 10s
+  logging:
+    driver: "json-file"
+    options:
+      max-size: "10m"
+      max-file: "3"
+
+services:
+  # ===========================================================================
+  # ORCHESTRATOR - Central Command (Always Running)
+  # ===========================================================================
+  orchestrator:
+    build:
+      context: ./orchestrator
+      dockerfile: Dockerfile
+    image: ruvector-swarm/orchestrator:latest
+    hostname: orchestrator
+    networks:
+      - control-plane
+      - agent-mesh
+    ports:
+      - "9000:9000"   # API
+      - "9001:9001"   # Metrics
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - orchestrator-state:/app/state:rw
+      - shared-memory:/app/memory:rw
+    environment:
+      - SWARM_MODE=true
+      - WORKER_RATIO=1:2
+      - MIN_WORKERS=1
+      - MAX_WORKERS=10
+      - SCALE_COOLDOWN=60
+      - MEMORY_PERSISTENCE=true
+      - BACKUP_S3_ENABLED=${BACKUP_S3_ENABLED:-false}
+      - BACKUP_LOCAL_PATH=/app/backups
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+    depends_on:
+      - memory-store
+      - memory-backup
+
+  # ===========================================================================
+  # MEMORY STORE - Redis Cluster (Always Running)
+  # ===========================================================================
+  memory-store:
+    image: redis:7-alpine
+    hostname: memory-store
+    command: >
+      redis-server
+      --appendonly yes
+      --appendfsync everysec
+      --maxmemory 1gb
+      --maxmemory-policy allkeys-lru
+      --save 60 1000
+      --save 300 100
+    networks:
+      - control-plane
+      - agent-mesh
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data:rw
+      - redis-config:/usr/local/etc/redis:ro
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ===========================================================================
+  # MEMORY BACKUP SERVICE (Always Running)
+  # ===========================================================================
+  memory-backup:
+    build:
+      context: ./memory
+      dockerfile: Dockerfile.backup
+    image: ruvector-swarm/memory-backup:latest
+    hostname: memory-backup
+    networks:
+      - control-plane
+    volumes:
+      - redis-data:/data/redis:ro
+      - backup-storage:/backups:rw
+      - shared-memory:/app/memory:ro
+    environment:
+      - BACKUP_INTERVAL=300
+      - BACKUP_RETENTION_DAYS=7
+      - BACKUP_COMPRESSION=gzip
+      - REDIS_HOST=memory-store
+      - REDIS_PORT=6379
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+    depends_on:
+      - memory-store
+
+  # ===========================================================================
+  # WORKER TYPE 1: RESEARCHER (Exploration & Analysis)
+  # ===========================================================================
+  worker-researcher:
+    <<: *worker-common
+    build:
+      context: ./workers
+      dockerfile: Dockerfile.researcher
+    image: ruvector-swarm/worker-researcher:latest
+    hostname: "researcher-{{.Task.Slot}}"
+    networks:
+      - agent-mesh
+      - research-isolated
+    environment:
+      - WORKER_TYPE=researcher
+      - WORKER_CAPABILITIES=explore,analyze,search,read,web
+      - SPAWN_PRIORITY=high
+      - IDLE_TIMEOUT=120
+    deploy:
+      mode: replicated
+      replicas: 1
+      update_config:
+        parallelism: 1
+        delay: 10s
+        failure_action: rollback
+      rollback_config:
+        parallelism: 1
+        delay: 10s
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+      labels:
+        - "swarm.autoscale=true"
+        - "swarm.autoscale.min=1"
+        - "swarm.autoscale.max=2"
+
+  # ===========================================================================
+  # WORKER TYPE 2: CODER (Implementation)
+  # ===========================================================================
+  worker-coder:
+    <<: *worker-common
+    build:
+      context: ./workers
+      dockerfile: Dockerfile.coder
+    image: ruvector-swarm/worker-coder:latest
+    hostname: "coder-{{.Task.Slot}}"
+    networks:
+      - agent-mesh
+      - coder-isolated
+    volumes:
+      - shared-memory:/app/memory:rw
+      - worker-logs:/app/logs:rw
+      - workspace:/app/workspace:rw
+    environment:
+      - WORKER_TYPE=coder
+      - WORKER_CAPABILITIES=write,edit,create,refactor,implement
+      - SPAWN_PRIORITY=high
+      - IDLE_TIMEOUT=180
+    deploy:
+      mode: replicated
+      replicas: 1
+      update_config:
+        parallelism: 1
+        delay: 10s
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+      labels:
+        - "swarm.autoscale=true"
+        - "swarm.autoscale.min=1"
+        - "swarm.autoscale.max=2"
+
+  # ===========================================================================
+  # WORKER TYPE 3: TESTER (Quality Assurance)
+  # ===========================================================================
+  worker-tester:
+    <<: *worker-common
+    build:
+      context: ./workers
+      dockerfile: Dockerfile.tester
+    image: ruvector-swarm/worker-tester:latest
+    hostname: "tester-{{.Task.Slot}}"
+    networks:
+      - agent-mesh
+      - tester-isolated
+    volumes:
+      - shared-memory:/app/memory:rw
+      - worker-logs:/app/logs:rw
+      - workspace:/app/workspace:ro
+      - test-results:/app/results:rw
+    environment:
+      - WORKER_TYPE=tester
+      - WORKER_CAPABILITIES=test,validate,benchmark,coverage
+      - SPAWN_PRIORITY=medium
+      - IDLE_TIMEOUT=90
+    deploy:
+      mode: replicated
+      replicas: 0
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+      labels:
+        - "swarm.autoscale=true"
+        - "swarm.autoscale.min=0"
+        - "swarm.autoscale.max=2"
+
+  # ===========================================================================
+  # WORKER TYPE 4: REVIEWER (Code Review & Security)
+  # ===========================================================================
+  worker-reviewer:
+    <<: *worker-common
+    build:
+      context: ./workers
+      dockerfile: Dockerfile.reviewer
+    image: ruvector-swarm/worker-reviewer:latest
+    hostname: "reviewer-{{.Task.Slot}}"
+    networks:
+      - agent-mesh
+      - reviewer-isolated
+    environment:
+      - WORKER_TYPE=reviewer
+      - WORKER_CAPABILITIES=review,audit,security,lint
+      - SPAWN_PRIORITY=medium
+      - IDLE_TIMEOUT=90
+    deploy:
+      mode: replicated
+      replicas: 0
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+      labels:
+        - "swarm.autoscale=true"
+        - "swarm.autoscale.min=0"
+        - "swarm.autoscale.max=2"
+
+  # ===========================================================================
+  # WORKER TYPE 5: COORDINATOR (Orchestration & Planning)
+  # ===========================================================================
+  worker-coordinator:
+    <<: *worker-common
+    build:
+      context: ./workers
+      dockerfile: Dockerfile.coordinator
+    image: ruvector-swarm/worker-coordinator:latest
+    hostname: "coordinator-{{.Task.Slot}}"
+    networks:
+      - agent-mesh
+      - control-plane
+    environment:
+      - WORKER_TYPE=coordinator
+      - WORKER_CAPABILITIES=plan,orchestrate,delegate,merge
+      - SPAWN_PRIORITY=critical
+      - IDLE_TIMEOUT=300
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+      labels:
+        - "swarm.autoscale=true"
+        - "swarm.autoscale.min=1"
+        - "swarm.autoscale.max=2"
+
+  # ===========================================================================
+  # MONITORING - Prometheus + Grafana
+  # ===========================================================================
+  prometheus:
+    image: prom/prometheus:latest
+    hostname: prometheus
+    networks:
+      - control-plane
+      - monitoring
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./config/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus:rw
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=7d'
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+
+  grafana:
+    image: grafana/grafana:latest
+    hostname: grafana
+    networks:
+      - control-plane
+      - monitoring
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana:rw
+      - ./config/grafana:/etc/grafana/provisioning:ro
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+    depends_on:
+      - prometheus
+
+# =============================================================================
+# NETWORKS - Isolated Segments
+# =============================================================================
+networks:
+  # Management network (orchestrator, memory)
+  control-plane:
+    driver: overlay
+    attachable: true
+    internal: false
+    ipam:
+      config:
+        - subnet: 10.10.0.0/24
+
+  # Inter-agent communication
+  agent-mesh:
+    driver: overlay
+    attachable: true
+    internal: true
+    ipam:
+      config:
+        - subnet: 10.20.0.0/24
+
+  # Monitoring network
+  monitoring:
+    driver: overlay
+    attachable: true
+    internal: true
+    ipam:
+      config:
+        - subnet: 10.30.0.0/24
+
+  # Isolated networks per worker type (security boundaries)
+  research-isolated:
+    driver: overlay
+    attachable: true
+    internal: true
+    ipam:
+      config:
+        - subnet: 10.100.0.0/24
+
+  coder-isolated:
+    driver: overlay
+    attachable: true
+    internal: true
+    ipam:
+      config:
+        - subnet: 10.101.0.0/24
+
+  tester-isolated:
+    driver: overlay
+    attachable: true
+    internal: true
+    ipam:
+      config:
+        - subnet: 10.102.0.0/24
+
+  reviewer-isolated:
+    driver: overlay
+    attachable: true
+    internal: true
+    ipam:
+      config:
+        - subnet: 10.103.0.0/24
+
+# =============================================================================
+# VOLUMES - Persistent Storage
+# =============================================================================
+volumes:
+  # Core persistent storage (ALWAYS BACKED UP)
+  shared-memory:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /var/lib/ruvector-swarm/memory
+
+  redis-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /var/lib/ruvector-swarm/redis
+
+  backup-storage:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /var/lib/ruvector-swarm/backups
+
+  orchestrator-state:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /var/lib/ruvector-swarm/orchestrator
+
+  # Worker storage
+  workspace:
+    driver: local
+
+  worker-logs:
+    driver: local
+
+  test-results:
+    driver: local
+
+  # Config storage
+  redis-config:
+    driver: local
+
+  # Monitoring storage
+  prometheus-data:
+    driver: local
+
+  grafana-data:
+    driver: local

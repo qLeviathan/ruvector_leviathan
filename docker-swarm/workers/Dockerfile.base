@@ -1,0 +1,45 @@
+# =============================================================================
+# RUVECTOR SWARM WORKER - BASE IMAGE
+# Common foundation for all worker types
+# =============================================================================
+FROM node:20-alpine AS base
+
+WORKDIR /app
+
+# Install common dependencies
+RUN apk add --no-cache \
+    curl \
+    git \
+    python3 \
+    make \
+    g++ \
+    redis \
+    tini \
+    jq
+
+# Create non-root user
+RUN addgroup -g 1001 -S worker && \
+    adduser -u 1001 -S worker -G worker
+
+# Create required directories
+RUN mkdir -p /app/memory /app/logs /app/workspace /app/results && \
+    chown -R worker:worker /app
+
+# Copy common utilities
+COPY --chown=worker:worker common/ ./common/
+
+# Install Node dependencies
+COPY --chown=worker:worker package*.json ./
+RUN npm ci --only=production
+
+# Copy worker runtime
+COPY --chown=worker:worker src/ ./src/
+
+# Switch to non-root user
+USER worker
+
+# Health check endpoint
+EXPOSE 8080
+
+# Use tini for proper signal handling
+ENTRYPOINT ["/sbin/tini", "--"]
