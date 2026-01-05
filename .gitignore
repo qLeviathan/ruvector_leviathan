@@ -70,3 +70,4 @@ claude-flow
 hive-mind-prompt-*.txt
 examples/scipix/test_images/
 .fastembed_cache/
+__pycache__/
