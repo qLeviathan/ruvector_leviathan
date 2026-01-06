@@ -1,0 +1,184 @@
+# ============================================================================
+# Makefile for HDC Implementation Synthesis
+# Target: iCE40HX1K (UPduino v3.0)
+# Toolchain: Yosys + NextPNR + IceStorm (open-source)
+# ============================================================================
+
+PROJECT = hdc_ice40hx1k
+TOP_MODULE = hdc_ice40hx1k
+VERILOG_FILES = hdc_implementation.v
+PCF_FILE = upduino_pinout.pcf
+
+# Device configuration
+DEVICE = hx1k
+PACKAGE = vq100
+
+# Output files
+JSON = $(PROJECT).json
+ASC = $(PROJECT).asc
+BIN = $(PROJECT).bin
+TIMING = $(PROJECT)_timing.rpt
+UTILIZATION = $(PROJECT)_util.rpt
+
+# Tools
+YOSYS = yosys
+NEXTPNR = nextpnr-ice40
+ICEPACK = icepack
+ICEPROG = iceprog
+ICETIME = icetime
+
+# Synthesis options
+YOSYS_OPTS = -q -p "synth_ice40 -top $(TOP_MODULE) -json $(JSON)"
+NEXTPNR_OPTS = --$(DEVICE) --package $(PACKAGE) --json $(JSON) --asc $(ASC) --pcf $(PCF_FILE)
+
+# ============================================================================
+# Targets
+# ============================================================================
+
+.PHONY: all clean synth pnr pack program timing stats sim
+
+all: $(BIN) timing stats
+
+# Synthesis with Yosys
+synth: $(JSON)
+
+$(JSON): $(VERILOG_FILES)
+	@echo "=== Running Synthesis ==="
+	$(YOSYS) $(YOSYS_OPTS) $(VERILOG_FILES)
+	@echo "Synthesis complete: $(JSON)"
+
+# Place and Route with NextPNR
+pnr: $(ASC)
+
+$(ASC): $(JSON) $(PCF_FILE)
+	@echo "=== Running Place and Route ==="
+	$(NEXTPNR) $(NEXTPNR_OPTS) --freq 12
+	@echo "Place and Route complete: $(ASC)"
+
+# Generate bitstream
+pack: $(BIN)
+
+$(BIN): $(ASC)
+	@echo "=== Generating Bitstream ==="
+	$(ICEPACK) $(ASC) $(BIN)
+	@echo "Bitstream ready: $(BIN)"
+
+# Program FPGA
+program: $(BIN)
+	@echo "=== Programming FPGA ==="
+	$(ICEPROG) $(BIN)
+	@echo "Programming complete!"
+
+# Timing analysis
+timing: $(ASC)
+	@echo "=== Timing Analysis ==="
+	$(ICETIME) -d $(DEVICE) -t -r $(TIMING) $(ASC)
+	@echo "Timing report: $(TIMING)"
+	@grep -A 10 "Total path delay" $(TIMING) || true
+
+# Resource utilization statistics
+stats: $(JSON)
+	@echo "=== Resource Utilization ==="
+	$(YOSYS) -p "read_json $(JSON); stat -width" > $(UTILIZATION)
+	@cat $(UTILIZATION)
+	@echo ""
+	@echo "Summary:"
+	@grep -E "(Number of cells|SB_LUT4|SB_CARRY|SB_DFF|ICESTORM_RAM)" $(UTILIZATION) || true
+
+# Simulation (requires Icarus Verilog)
+sim:
+	@echo "=== Running Simulation ==="
+	iverilog -DSIMULATION -o hdc_tb.vvp $(VERILOG_FILES)
+	vvp hdc_tb.vvp
+	@echo "Simulation complete!"
+
+# Estimate resource usage before synthesis
+estimate:
+	@echo "=== Resource Estimation ==="
+	@echo "Target Device: iCE40HX1K"
+	@echo "Available Resources:"
+	@echo "  - LUTs: 1,280"
+	@echo "  - BRAMs: 16 blocks (64 Kbit total)"
+	@echo "  - Flip-Flops: 1,280"
+	@echo ""
+	@echo "Expected Usage (from specification):"
+	@echo "  - LUTs: ~558 (43.6%)"
+	@echo "  - BRAMs: ~12 (75%)"
+	@echo "  - Clock: 12 MHz"
+
+# Clean build artifacts
+clean:
+	rm -f $(JSON) $(ASC) $(BIN) $(TIMING) $(UTILIZATION)
+	rm -f *.vvp *.vcd
+	@echo "Cleaned build artifacts"
+
+# Help
+help:
+	@echo "HDC Implementation Makefile"
+	@echo "==========================="
+	@echo ""
+	@echo "Targets:"
+	@echo "  all        - Full build (synth + pnr + pack + timing + stats)"
+	@echo "  synth      - Synthesize Verilog to JSON"
+	@echo "  pnr        - Place and route"
+	@echo "  pack       - Generate bitstream"
+	@echo "  program    - Program FPGA via USB"
+	@echo "  timing     - Run timing analysis"
+	@echo "  stats      - Show resource utilization"
+	@echo "  sim        - Run simulation (requires iverilog)"
+	@echo "  estimate   - Show expected resource usage"
+	@echo "  clean      - Remove build artifacts"
+	@echo ""
+	@echo "Usage Examples:"
+	@echo "  make all          # Complete build flow"
+	@echo "  make program      # Build and program FPGA"
+	@echo "  make sim          # Run testbench"
+	@echo "  make timing       # Check timing constraints"
+
+# ============================================================================
+# Advanced Options
+# ============================================================================
+
+# Verbose synthesis
+synth-verbose:
+	$(YOSYS) -p "synth_ice40 -top $(TOP_MODULE) -json $(JSON)" $(VERILOG_FILES)
+
+# PNR with GUI (requires nextpnr-ice40 GUI)
+pnr-gui: $(JSON)
+	$(NEXTPNR) $(NEXTPNR_OPTS) --gui
+
+# Generate post-PNR Verilog for verification
+verify: $(ASC)
+	icebox_vlog -p $(PCF_FILE) $(ASC) > $(PROJECT)_post_pnr.v
+
+# Flash to SPI flash (persistent)
+flash: $(BIN)
+	$(ICEPROG) -o 0x0 $(BIN)
+
+# ============================================================================
+# Continuous Integration / Testing
+# ============================================================================
+
+ci: clean sim all timing
+	@echo "CI build complete"
+	@grep "PASS" *.log || (echo "Tests failed!" && exit 1)
+
+# ============================================================================
+# Documentation
+# ============================================================================
+
+docs:
+	@echo "Opening specification..."
+	@xdg-open hdc_specification.md || open hdc_specification.md || echo "Spec: hdc_specification.md"
+
+# ============================================================================
+# Dependencies
+# ============================================================================
+
+.SUFFIXES:
+
+# Ensure JSON is rebuilt if Verilog changes
+$(JSON): $(VERILOG_FILES)
+
+# Ensure ASC is rebuilt if JSON or PCF changes
+$(ASC): $(JSON) $(PCF_FILE)
