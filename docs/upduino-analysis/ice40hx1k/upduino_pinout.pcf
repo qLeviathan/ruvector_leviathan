@@ -1,0 +1,82 @@
+# ============================================================================
+# UPduino v3.0 Pin Constraint File (PCF)
+# For HDC Implementation on iCE40HX1K-VQ100
+# ============================================================================
+
+# System Clock (12 MHz oscillator)
+set_io clk 35
+
+# LEDs (RGB LED broken out as separate pins)
+set_io led[0] 39   # LED Red
+set_io led[1] 40   # LED Green
+set_io led[2] 41   # LED Blue
+set_io led[3] 42   # Additional GPIO for LED4
+set_io led[4] 43   # Additional GPIO for LED5
+
+# Reset button (active low)
+set_io rst_n 10
+
+# Control signals (GPIO pins)
+set_io start 11
+set_io done 12
+set_io busy 13
+
+# Query vector input interface (SPI-like, 32-bit chunks)
+# Using GPIO pins for parallel input
+set_io query_data[0]  20
+set_io query_data[1]  21
+set_io query_data[2]  22
+set_io query_data[3]  23
+set_io query_data[4]  25
+set_io query_data[5]  26
+set_io query_data[6]  27
+set_io query_data[7]  28
+set_io query_data[8]  31
+set_io query_data[9]  32
+set_io query_data[10] 33
+set_io query_data[11] 34
+set_io query_data[12] 36
+set_io query_data[13] 37
+set_io query_data[14] 38
+set_io query_data[15] 44
+set_io query_data[16] 45
+set_io query_data[17] 46
+set_io query_data[18] 47
+set_io query_data[19] 48
+set_io query_data[20] 2
+set_io query_data[21] 3
+set_io query_data[22] 4
+set_io query_data[23] 6
+set_io query_data[24] 7
+set_io query_data[25] 8
+set_io query_data[26] 9
+set_io query_data[27] 18
+set_io query_data[28] 19
+set_io query_data[29] 15
+set_io query_data[30] 16
+set_io query_data[31] 17
+
+# Query address (5 bits for 32 words)
+set_io query_addr[0] 1
+set_io query_addr[1] 14
+set_io query_addr[2] 24
+set_io query_addr[3] 29
+set_io query_addr[4] 30
+
+# Query write enable
+set_io query_we 5
+
+# Note: Prototype programming interface (proto_data, proto_addr, proto_we)
+# would be connected similarly but is typically only used during configuration
+# or can be multiplexed with query interface
+
+# ============================================================================
+# I/O Standards
+# ============================================================================
+# All I/O uses LVCMOS33 (3.3V logic levels)
+
+# ============================================================================
+# Timing Constraints
+# ============================================================================
+# Clock frequency: 12 MHz (83.33 ns period)
+# All I/O setup/hold times should meet 3.3V LVCMOS specs
